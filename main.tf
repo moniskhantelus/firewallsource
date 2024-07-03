@@ -1,86 +1,21 @@
-
-locals {
-  ingress_rules = { for rule in var.ingress_rules : rule.name => merge(rule, { direction = "INGRESS" }) }
-  egress_rules  = { for rule in var.egress_rules : rule.name => merge(rule, { direction = "EGRESS" }) }
-  rules_all     = merge(local.ingress_rules, local.egress_rules)
-}
-
 resource "google_compute_firewall" "rules" {
-  for_each                = length(var.rules) > 0 ? { for r in var.rules : r.name => r } : {}
-  name                    = each.value.name
-  description             = each.value.description
-  direction               = each.value.direction
-  disabled                = each.value.disabled
-  network                 = var.network_name
-  project                 = var.project_id
-  source_ranges           = each.value.direction == "INGRESS" ? each.value.ranges : null
-  destination_ranges      = each.value.direction == "EGRESS" ? each.value.ranges : null
-  source_tags             = each.value.source_tags
-  source_service_accounts = each.value.source_service_accounts
-  target_tags             = each.value.target_tags
-  target_service_accounts = each.value.target_service_accounts
-  priority                = each.value.priority
-
-  dynamic "log_config" {
-    for_each = lookup(each.value, "log_config") == null ? [] : [each.value.log_config]
-    content {
-      metadata = log_config.value.metadata
-    }
+  for_each  = { for rule in var.rules : rule.name => rule }
+  project   = var.project_id
+  name      = each.value.name
+  network   = var.network
+  priority  = each.value.priority
+  direction = each.value.direction
+  allow {
+    protocol = each.value.protocol
+    ports    = (each.value.ports != null) ? each.value.ports : null
   }
-
-  dynamic "allow" {
-    for_each = lookup(each.value, "allow", [])
-    content {
-      protocol = allow.value.protocol
-      ports    = lookup(allow.value, "ports", null)
-    }
-  }
-
-  dynamic "deny" {
-    for_each = lookup(each.value, "deny", [])
-    content {
-      protocol = deny.value.protocol
-      ports    = lookup(deny.value, "ports", null)
-    }
-  }
-}
-
-resource "google_compute_firewall" "rules_ingress_egress" {
-  for_each                = length(var.rules) > 0 ? {} : local.rules_all
-  name                    = each.value.name
-  description             = each.value.description
-  direction               = each.value.direction
-  disabled                = each.value.disabled
-  network                 = var.network_name
-  project                 = var.project_id
-  source_ranges           = lookup(each.value, "source_ranges", null)
-  destination_ranges      = lookup(each.value, "destination_ranges", null)
-  source_tags             = each.value.source_tags
-  source_service_accounts = each.value.source_service_accounts
-  target_tags             = each.value.target_tags
-  target_service_accounts = each.value.target_service_accounts
-  priority                = each.value.priority
-
-  dynamic "log_config" {
-    for_each = lookup(each.value, "log_config") == null ? [] : [each.value.log_config]
-    content {
-      metadata = log_config.value.metadata
-    }
-  }
-
-  dynamic "allow" {
-    for_each = lookup(each.value, "allow", [])
-    content {
-      protocol = allow.value.protocol
-      ports    = lookup(allow.value, "ports", null)
-    }
-  }
-
-  dynamic "deny" {
-    for_each = lookup(each.value, "deny", [])
-    content {
-      protocol = deny.value.protocol
-      ports    = lookup(deny.value, "ports", null)
-    }
+  source_ranges           = (each.value.direction == "INGRESS") ? each.value.source_ranges : null
+  destination_ranges      = (each.value.direction == "EGRESS") ? each.value.destination_ranges : null
+  source_tags             = (each.value.use_service_accounts == false && each.value.direction == "INGRESS") ? each.value.source_tags : null
+  target_tags             = (each.value.use_service_accounts == false) ? each.value.target_tags : null
+  source_service_accounts = (each.value.use_service_accounts == true && each.value.direction == "INGRESS") ? each.value.source_service_accounts : null
+  target_service_accounts = (each.value.use_service_accounts == true) ? each.value.target_service_accounts : null
+  log_config {
+    metadata = var.log_config_metadata
   }
 }
